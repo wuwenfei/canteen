@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <title>去哪吃饭？小助手</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: #f5f5f5;
+      padding: 20px;
+      text-align: center;
+    }
+    h1 {
+      color: #333;
+    }
+    button {
+      padding: 14px 24px;
+      font-size: 18px;
+      margin: 10px 5px;
+      border-radius: 8px;
+      border: none;
+      background-color: #007acc;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #005f99;
+    }
+    #result {
+      margin-top: 20px;
+      font-size: 22px;
+      font-weight: bold;
+      color: #007acc;
+    }
+    .prob-list {
+      margin-top: 15px;
+      padding: 12px;
+      background: #ffffff;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      font-size: 16px;
+      text-align: left;
+      display: inline-block;
+    }
+    .week-history {
+      margin-top: 20px;
+      padding: 10px;
+      background: #fff;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      text-align: left;
+    }
+    ul {
+      padding-left: 20px;
+    }
+    #quotaDisplay {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    .reset-button {
+      background-color: #e53935;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>去哪吃饭？🎲</h1>
+  <button onclick="pickLunch()">随机抽取</button>
+  <button onclick="useCanteenQuota()">使用新食堂名额</button>
+  <button onclick="resetAll()" class="reset-button">🔄 重置数据</button>
+
+  <div class="prob-list">
+    <strong>各选项概率：</strong><br>
+    ▸ 新食堂：15%（每周额外可主动去4次）<br>
+    ▸ 西区：35%<br>
+    ▸ 麦香：15%<br>
+    ▸ 大食堂：25%<br>
+    ▸ 玉湖：25%<br>
+    ▸ 出去吃：1%<br>
+    ▸ 喝酸奶并再抽一次：4%
+  </div>
+
+  <div id="result"></div>
+  <p id="quotaDisplay"></p>
+
+  <div id="history">
+    <h3>历史记录：</h3>
+    <div id="historyContainer"></div>
+  </div>
+
+  <script>
+    const options = [
+      { name: '新食堂', weight: 15 },
+      { name: '西区', weight: 35 },
+      { name: '麦香', weight: 15 },
+      { name: '大食堂', weight: 25 },
+      { name: '玉湖', weight: 25 },
+      { name: '出去吃', weight: 1 },
+      { name: '喝酸奶并再抽一次', weight: 4 }
+    ];
+
+    function getWeekKey() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const janFirst = new Date(year, 0, 1);
+      const week = Math.ceil((((now - janFirst) / 86400000) + janFirst.getDay() + 1) / 7);
+      return `${year}-W${week}`;
+    }
+
+    function loadHistory() {
+      return JSON.parse(localStorage.getItem('lunchHistory') || '{}');
+    }
+
+    function saveHistory(history) {
+      localStorage.setItem('lunchHistory', JSON.stringify(history));
+    }
+
+    function loadQuota() {
+      const all = JSON.parse(localStorage.getItem('canteenQuota') || '{}');
+      const key = getWeekKey();
+      if (!(key in all)) all[key] = 4;
+      return { all, key };
+    }
+
+    function saveQuota(all) {
+      localStorage.setItem('canteenQuota', JSON.stringify(all));
+    }
+
+    function pickOnce() {
+      const total = options.reduce((sum, opt) => sum + opt.weight, 0);
+      const rand = Math.random() * total;
+      let sum = 0;
+      for (let opt of options) {
+        sum += opt.weight;
+        if (rand < sum) return opt.name;
+      }
+    }
+
+    function pickLunch() {
+      const { all, key } = loadQuota();
+      let history = loadHistory();
+      if (!history[key]) history[key] = [];
+
+      let choice = pickOnce();
+      let displayResult = `今天我们去：${choice}`;
+
+      if (choice === '喝酸奶并再抽一次') {
+        let second;
+        do {
+          second = pickOnce();
+        } while (second === '喝酸奶并再抽一次');
+        displayResult = `先喝酸奶🧃，再抽一次 → 今天我们去：${second}`;
+        history[key].push('喝酸奶并再抽一次');
+        history[key].push(second);
+      } else {
+        history[key].push(choice);
+      }
+
+      saveHistory(history);
+      document.getElementById('result').innerText = displayResult;
+      updateHistoryDisplay();
+      updateQuotaDisplay();
+    }
+
+    function useCanteenQuota() {
+      const { all, key } = loadQuota();
+      if (all[key] > 0) {
+        all[key] -= 1;
+        let history = loadHistory();
+        if (!history[key]) history[key] = [];
+        history[key].push('【主动】新食堂');
+        saveHistory(history);
+        saveQuota(all);
+        document.getElementById('result').innerText = `使用新食堂名额 → 今天我们去：新食堂`;
+        updateHistoryDisplay();
+        updateQuotaDisplay();
+      } else {
+        alert("本周新食堂名额已用完！");
+      }
+    }
+
+    function resetAll() {
+      if (confirm("确定要重置所有数据？")) {
+        localStorage.removeItem('lunchHistory');
+        localStorage.removeItem('canteenQuota');
+        document.getElementById('result').innerText = '';
+        updateHistoryDisplay();
+        updateQuotaDisplay();
+      }
+    }
+
+    function updateHistoryDisplay() {
+      const container = document.getElementById('historyContainer');
+      container.innerHTML = '';
+      const history = loadHistory();
+      const sortedKeys = Object.keys(history).sort().reverse();
+      for (let key of sortedKeys) {
+        const section = document.createElement('div');
+        section.classList.add('week-history');
+        const title = document.createElement('div');
+        title.innerHTML = `<strong>第 ${key.split('-W')[1]} 周（${key.split('-')[0]} 年）</strong>`;
+        section.appendChild(title);
+        const ul = document.createElement('ul');
+        for (let item of history[key]) {
+          const li = document.createElement('li');
+          li.textContent = item;
+          ul.appendChild(li);
+        }
+        section.appendChild(ul);
+        container.appendChild(section);
+      }
+    }
+
+    function updateQuotaDisplay() {
+      const { all, key } = loadQuota();
+      document.getElementById('quotaDisplay').innerText = `本周“新食堂名额”剩余：${all[key]} 次`;
+    }
+
+    updateHistoryDisplay();
+    updateQuotaDisplay();
+  </script>
+
+</body>
+</html>
